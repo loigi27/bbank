@@ -1,0 +1,3 @@
+# BBank 2026
+# Este projeto usa somente a biblioteca padrão do Python.
+# Não há dependências externas para instalar.
