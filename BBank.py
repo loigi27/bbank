@@ -144,12 +144,28 @@ def normalizar_matricula(value):
 
 
 def baixar_aba(nome_aba):
-    url = GOOGLE_CSV_URL + quote(nome_aba, safe="") + "&tqx=out%3Acsv"
+    # A exportação CSV preserva os títulos que o endpoint gviz pode omitir
+    # quando há linhas de agrupamento acima do cabeçalho.
+    gids = {
+        "B$": os.getenv("GOOGLE_SHEET_BALANCE_GID", "939288011"),
+        "notas": os.getenv("GOOGLE_SHEET_GRADES_GID", "0"),
+    }
+    if nome_aba not in gids:
+        raise ValueError("Aba da planilha não configurada.")
+    url = (
+        "https://docs.google.com/spreadsheets/d/" + SHEET_ID
+        + "/export?format=csv&gid=" + quote(gids[nome_aba], safe="")
+    )
     req = Request(url, headers={"User-Agent": "BBank-Consulta/2.0"})
-    with urlopen(req, timeout=15) as resposta:
+    with urlopen(req, timeout=25) as resposta:
         bruto = resposta.read()
     texto = bruto.decode("utf-8-sig", errors="replace")
-    return list(csv.reader(io.StringIO(texto)))
+    dados = list(csv.reader(io.StringIO(texto)))
+    for i, row in enumerate(dados):
+        cabecalho = [str(x).strip() for x in row]
+        if "Matrícula" in cabecalho and "Nome" in cabecalho:
+            return [cabecalho] + dados[i + 1:]
+    raise ValueError("Não foi encontrado o cabeçalho da aba " + nome_aba + ".")
 
 
 class PlanilhaDB:
