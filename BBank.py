@@ -1,51 +1,28 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-BBank 2026 v2 — consulta de saldo, notas e aquisições.
-
-Versão de produção:
-- Somente alunos com status "Blindado" podem solicitar aquisições.
-- E-mail de envio: luigi_38971@alunoetapa.com.br
-- E-mail que recebe as solicitações: wanderson.silva@etapa.com.br
-- SMTP: Google/Gmail (smtp.gmail.com)
-- A senha NÃO fica no código: use a variável de ambiente SMTP_PASSWORD.
-
-Instalação:
-    python -m pip install -r requirements.txt
-
-Windows PowerShell:
-    $env:SMTP_PASSWORD="SUA_APP_PASSWORD"
-    python bbank_v.2_preview.py
+BBank 2026 — consulta e pedidos por e-mail manual.
+Sem SMTP, Brevo, telefone ou chave de API.
+Solicitar prepara o pedido; o usuário abre seu e-mail e clica em Enviar.
+Execute: python BBank.py
 """
 
 import csv
 import html
 import io
 import os
-import smtplib
 import threading
 import time
 import webbrowser
-from email.message import EmailMessage
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, urlparse
 from urllib.request import Request, urlopen
 
 
-PORTA = int(os.getenv("PORTA", "8000"))
+PORTA = int(os.getenv("PORT", os.getenv("PORTA", "8000")))
 CACHE_SEGUNDOS = float(os.getenv("CACHE_SEGUNDOS", "3"))
 
 ADMIN_EMAIL = "wanderson.silva@etapa.com.br"
-
-# Google Workspace/Gmail SMTP.
-SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com").strip()
-SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
-SMTP_USER = os.getenv(
-    "SMTP_USER",
-    "luigi_38971@alunoetapa.com.br"
-).strip()
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").strip()
-SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USER).strip()
 
 SHEET_ID = os.getenv(
     "GOOGLE_SHEET_ID",
@@ -380,13 +357,13 @@ Aquisições bloqueadas para este status.
     aviso = (
         "Modo de teste: todos os status podem solicitar aquisições."
         if USUARIOS_PODEM_COMPRAR
-        else "A solicitação é enviada por e-mail. O saldo não é alterado automaticamente."
+        else "O site prepara o pedido para você enviar pelo seu e-mail. O saldo não é alterado automaticamente."
     )
 
     return f"""
 <section class="aquisicoes">
 <div class="aquisicoes-head">
-<div><h3>Aquisições</h3><p>Solicite um benefício e aguarde a confirmação do administrador.</p></div>
+<div><h3>Aquisições</h3><p>Prepare um pedido, envie pelo seu e-mail e aguarde a confirmação do administrador.</p></div>
 </div>
 <div class="aquisicao-grid">{"".join(botoes)}</div>
 <div class="notice">{esc(aviso)}</div>
@@ -483,50 +460,23 @@ autocomplete="off" required>
 </html>""".encode("utf-8")
 
 
-def enviar_email_compra(aluno, produto):
-    """
-    Envia a solicitação usando Gmail/Google Workspace SMTP.
-
-    465 = SSL
-    587 = STARTTLS
-
-    A senha deve vir de SMTP_PASSWORD.
-    """
-    if not SMTP_PASSWORD:
-        raise RuntimeError(
-            "SMTP_PASSWORD não está configurada. "
-            "No PowerShell, execute: $env:SMTP_PASSWORD=\"SUA_APP_PASSWORD\""
-        )
-
+def preparar_email_compra(aluno, produto):
+    """Prepara um link mailto; não envia nem registra uma compra."""
     item = AQUISICOES[produto]
-
-    mensagem = EmailMessage()
-    mensagem["Subject"] = f"BBank — Solicitação de aquisição — {item['nome']}"
-    mensagem["From"] = SMTP_FROM
-    mensagem["To"] = ADMIN_EMAIL
-    mensagem.set_content(
-        "Nova solicitação de aquisição no BBank 2026.\n\n"
-        f"Aluno: {aluno.get('nome', '')}\n"
-        f"Matrícula: {aluno.get('matricula', '')}\n"
-        f"Ano: {aluno.get('ano', '')}\n"
-        f"Turma: {aluno.get('turma', '')}\n"
-        f"Status: {aluno.get('status', '')}\n"
-        f"Produto: {item['nome']}\n"
-        f"Descrição: {item['descricao']}\n"
-        f"Custo: {item['custo']}\n"
+    assunto = f"BBank — Solicitação de aquisição — {item['nome']}"
+    corpo = (
+        "Nova solicitação de aquisição no BBank 2026.\r\n\r\n"
+        f"Aluno: {aluno.get('nome', '')}\r\n"
+        f"Matrícula: {aluno.get('matricula', '')}\r\n"
+        f"Ano: {aluno.get('ano', '')}\r\n"
+        f"Turma: {aluno.get('turma', '')}\r\n"
+        f"Status: {aluno.get('status', '')}\r\n"
+        f"Produto: {item['nome']}\r\n"
+        f"Descrição: {item['descricao']}\r\n"
+        f"Custo: {item['custo']}\r\n"
     )
-
-    if SMTP_PORT == 465:
-        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=20) as smtp:
-            smtp.login(SMTP_USER, SMTP_PASSWORD)
-            smtp.send_message(mensagem)
-    else:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as smtp:
-            smtp.ehlo()
-            smtp.starttls()
-            smtp.ehlo()
-            smtp.login(SMTP_USER, SMTP_PASSWORD)
-            smtp.send_message(mensagem)
+    link = f"mailto:{ADMIN_EMAIL}?subject={quote(assunto, safe='')}&body={quote(corpo, safe='')}"
+    return assunto, corpo, link
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -569,19 +519,25 @@ class Handler(BaseHTTPRequestHandler):
                 self._responder_html(dados, 403)
                 return
 
-            enviar_email_compra(aluno, produto)
+            assunto, corpo_email, link_email = preparar_email_compra(aluno, produto)
 
             item = AQUISICOES[produto]
             corpo_html = f"""
 <div class="panel">
-<h3>Solicitação enviada</h3>
+<h3>Pedido preparado</h3>
 <p class="meta">
-Sua solicitação de <b>{esc(item["nome"])}</b> foi enviada para o administrador.
+Seu pedido de <b>{esc(item["nome"])}</b> está pronto. Abra seu e-mail e clique em <b>Enviar</b> para encaminhar ao administrador.
+</p>
+<p><a href="{esc(link_email)}">Abrir e-mail com o pedido</a></p>
+<p class="meta">Nenhum e-mail foi enviado pelo site. Se o link não abrir, copie os dados abaixo no Gmail ou em outro e-mail.</p>
+<p><b>Para:</b> {esc(ADMIN_EMAIL)}<br><b>Assunto:</b> {esc(assunto)}</p>
+<textarea readonly aria-label="Texto do pedido" style="width:100%;min-height:220px;box-sizing:border-box">{esc(corpo_email)}</textarea>
+<p class="meta">O saldo não é alterado automaticamente.
 </p>
 </div>
 <a class="back" href="/?matricula={quote(mat)}">← Voltar para o saldo</a>
 """
-            dados = pagina(corpo_html, mat, "Aquisição enviada — BBank 2026")
+            dados = pagina(corpo_html, mat, "Pedido preparado — BBank 2026")
             self._responder_html(dados, 200)
 
         except Exception as exc:
@@ -678,14 +634,10 @@ if __name__ == "__main__":
     print("  BBank 2026")
     print(f"  Abra: {url}")
     print("  Fonte: Google Planilhas / B$ e notas")
-    print(f"  SMTP: {SMTP_HOST}:{SMTP_PORT}")
-    print(f"  Usuário SMTP: {SMTP_USER}")
+    print("  Pedidos: e-mail manual, sem chave de API")
     print(f"  Cache: {CACHE_SEGUNDOS} segundo(s)")
     print("  Para encerrar: Ctrl+C")
     print("=" * 60)
-
-    if not SMTP_PASSWORD:
-        print("  AVISO: SMTP_PASSWORD ainda não foi configurada.")
 
     threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     ThreadingHTTPServer(("0.0.0.0", PORTA), Handler).serve_forever()
