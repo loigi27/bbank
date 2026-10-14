@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-BBank 2026 — consulta e pedidos por e-mail manual.
-Sem SMTP, Brevo, telefone ou chave de API.
-Solicitar prepara o pedido; o usuário abre seu e-mail e clica em Enviar.
-Execute: python BBank.py
+"""BBank 2026 — envio automático via Google Apps Script (HTTPS).
+Configure GOOGLE_MAIL_URL e BBANK_MAIL_TOKEN no Render.
+Veja CONFIGURAR_ENVIO.md para a configuração inicial.
 """
 
 import csv
 import html
 import io
+import json
+import uuid
 import os
 import threading
 import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, urlparse
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
@@ -23,6 +24,8 @@ PORTA = int(os.getenv("PORT", os.getenv("PORTA", "8000")))
 CACHE_SEGUNDOS = float(os.getenv("CACHE_SEGUNDOS", "3"))
 
 ADMIN_EMAIL = "wanderson.silva@etapa.com.br"
+GOOGLE_MAIL_URL = os.getenv("GOOGLE_MAIL_URL", "").strip()
+BBANK_MAIL_TOKEN = os.getenv("BBANK_MAIL_TOKEN", "").strip()
 
 SHEET_ID = os.getenv(
     "GOOGLE_SHEET_ID",
@@ -357,13 +360,13 @@ Aquisições bloqueadas para este status.
     aviso = (
         "Modo de teste: todos os status podem solicitar aquisições."
         if USUARIOS_PODEM_COMPRAR
-        else "O site prepara o pedido para você enviar pelo seu e-mail. O saldo não é alterado automaticamente."
+        else "A solicitação é enviada automaticamente por e-mail. O saldo não é alterado automaticamente."
     )
 
     return f"""
 <section class="aquisicoes">
 <div class="aquisicoes-head">
-<div><h3>Aquisições</h3><p>Prepare um pedido, envie pelo seu e-mail e aguarde a confirmação do administrador.</p></div>
+<div><h3>Aquisições</h3><p>Solicite um benefício e aguarde a confirmação do administrador.</p></div>
 </div>
 <div class="aquisicao-grid">{"".join(botoes)}</div>
 <div class="notice">{esc(aviso)}</div>
@@ -460,8 +463,8 @@ autocomplete="off" required>
 </html>""".encode("utf-8")
 
 
-def preparar_email_compra(aluno, produto):
-    """Prepara um link mailto; não envia nem registra uma compra."""
+def enviar_email_compra(aluno, produto):
+    """Solicita envio automático; só retorna com confirmação do Google."""
     item = AQUISICOES[produto]
     assunto = f"BBank — Solicitação de aquisição — {item['nome']}"
     corpo = (
@@ -475,8 +478,32 @@ def preparar_email_compra(aluno, produto):
         f"Descrição: {item['descricao']}\r\n"
         f"Custo: {item['custo']}\r\n"
     )
-    link = f"mailto:{ADMIN_EMAIL}?subject={quote(assunto, safe='')}&body={quote(corpo, safe='')}"
-    return assunto, corpo, link
+    endpoint = urlparse(GOOGLE_MAIL_URL)
+    if (endpoint.scheme != "https" or endpoint.hostname != "script.google.com"
+            or not endpoint.path.startswith("/macros/s/")
+            or not endpoint.path.endswith("/exec") or endpoint.query):
+        raise RuntimeError("Configure GOOGLE_MAIL_URL com a URL /exec do Apps Script no Render.")
+    if len(BBANK_MAIL_TOKEN) < 32:
+        raise RuntimeError("Configure BBANK_MAIL_TOKEN no Render com pelo menos 32 caracteres.")
+    request = Request(GOOGLE_MAIL_URL, method="POST",
+        data=json.dumps({"token": BBANK_MAIL_TOKEN, "requestId": uuid.uuid4().hex,
+                         "subject": assunto, "body": corpo}).encode("utf-8"),
+        headers={"Content-Type": "application/json"})
+    try:
+        with urlopen(request, timeout=30) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except (HTTPError, URLError, TimeoutError):
+        raise RuntimeError("Não foi possível confirmar o envio pelo Google. Consulte o administrador antes de repetir o pedido.") from None
+    except (ValueError, UnicodeError):
+        raise RuntimeError("O Google não retornou a confirmação. Confira a implantação /exec e o acesso para Qualquer pessoa.") from None
+    if not isinstance(result, dict) or result.get("ok") is not True:
+        code = result.get("code") if isinstance(result, dict) else None
+        errors = {
+            "auth": "O token do Render deve ser igual ao token nas propriedades do Apps Script.",
+            "quota": "O limite diário de e-mails do Google foi atingido.",
+            "config": "Configure BBANK_MAIL_TOKEN nas propriedades do Apps Script.",
+        }
+        raise RuntimeError(errors.get(code, "O Google não confirmou o envio. Confira as Execuções no Apps Script."))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -519,25 +546,18 @@ class Handler(BaseHTTPRequestHandler):
                 self._responder_html(dados, 403)
                 return
 
-            assunto, corpo_email, link_email = preparar_email_compra(aluno, produto)
+            enviar_email_compra(aluno, produto)
 
             item = AQUISICOES[produto]
             corpo_html = f"""
 <div class="panel">
-<h3>Pedido preparado</h3>
-<p class="meta">
-Seu pedido de <b>{esc(item["nome"])}</b> está pronto. Abra seu e-mail e clique em <b>Enviar</b> para encaminhar ao administrador.
-</p>
-<p><a href="{esc(link_email)}">Abrir e-mail com o pedido</a></p>
-<p class="meta">Nenhum e-mail foi enviado pelo site. Se o link não abrir, copie os dados abaixo no Gmail ou em outro e-mail.</p>
-<p><b>Para:</b> {esc(ADMIN_EMAIL)}<br><b>Assunto:</b> {esc(assunto)}</p>
-<textarea readonly aria-label="Texto do pedido" style="width:100%;min-height:220px;box-sizing:border-box">{esc(corpo_email)}</textarea>
-<p class="meta">O saldo não é alterado automaticamente.
-</p>
+<h3>Solicitação enviada</h3>
+<p class="meta">Sua solicitação de <b>{esc(item["nome"])}</b> foi enviada automaticamente para o administrador.</p>
+<p class="meta">Aguarde a confirmação do administrador. O saldo não é alterado automaticamente.</p>
 </div>
 <a class="back" href="/?matricula={quote(mat)}">← Voltar para o saldo</a>
 """
-            dados = pagina(corpo_html, mat, "Pedido preparado — BBank 2026")
+            dados = pagina(corpo_html, mat, "Solicitação enviada — BBank 2026")
             self._responder_html(dados, 200)
 
         except Exception as exc:
@@ -634,7 +654,7 @@ if __name__ == "__main__":
     print("  BBank 2026")
     print(f"  Abra: {url}")
     print("  Fonte: Google Planilhas / B$ e notas")
-    print("  Pedidos: e-mail manual, sem chave de API")
+    print("  Pedidos: envio automático pelo Google Apps Script")
     print(f"  Cache: {CACHE_SEGUNDOS} segundo(s)")
     print("  Para encerrar: Ctrl+C")
     print("=" * 60)
