@@ -419,7 +419,7 @@ def pagina(conteudo="", valor_digitado="", titulo="BBank 2026"):
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{esc(titulo)}</title>
+<title>Bbank</title>
 <link rel="icon" type="image/png" href="/assets/bbank_logo.png">
 <link rel="shortcut icon" type="image/png" href="/assets/bbank_logo.png">
 <style>{CSS}</style>
