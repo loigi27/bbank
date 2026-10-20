@@ -503,7 +503,17 @@ def enviar_email_compra(aluno, produto):
             "quota": "O limite diário de e-mails do Google foi atingido.",
             "config": "Configure BBANK_MAIL_TOKEN nas propriedades do Apps Script.",
         }
-        raise RuntimeError(errors.get(code, "O Google não confirmou o envio. Confira as Execuções no Apps Script."))
+        errors.update({
+            "send": "O Apps Script recebeu o pedido, mas falhou ao enviar o e-mail. Confira a permissão do MailApp e o erro em Execuções no Apps Script antes de repetir o pedido.",
+            "invalid": "O Apps Script rejeitou o formato do pedido. Publique uma nova versão usando o Google_Email.gs do repositório BBank.",
+            "busy": "O serviço de envio está ocupado. Aguarde alguns segundos antes de tentar novamente.",
+        })
+        # Registre apenas códigos conhecidos; nunca tokens, corpos ou respostas brutas.
+        safe_code = code if isinstance(code, str) and code in errors else "unexpected_response"
+        print("BBANK_MAIL_ERROR code=" + safe_code, flush=True)
+        raise RuntimeError(errors.get(safe_code,
+            "O Apps Script retornou uma resposta incompatível (unexpected_response). "
+            "Confira se a URL /exec aponta para uma implantação atualizada do Google_Email.gs."))
 
 
 class Handler(BaseHTTPRequestHandler):
