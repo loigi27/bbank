@@ -102,6 +102,7 @@ button:hover{transform:translateY(-1px);filter:brightness(1.04)}
 .normas-atalho{margin-top:16px}.normas-button{display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;padding:13px 18px;border-radius:13px;background:linear-gradient(135deg,var(--blue),#347ee8);color:#fff;text-decoration:none;font-weight:800;box-shadow:0 8px 20px rgba(36,99,212,.22);transition:.2s}.normas-button:hover{transform:translateY(-1px);filter:brightness(1.04)}
 .back{display:inline-block;margin-top:18px;color:#3569b6;text-decoration:none;font-weight:800;font-size:.88rem}
 footer{text-align:center;color:#9eb0c7;font-size:.75rem;padding:16px}
+footer a{color:#80b8ff;text-decoration:underline;margin-left:6px;font-weight:600}footer a:hover{color:#fff}
 .loading{position:fixed;inset:0;background:rgba(5,15,30,.5);backdrop-filter:blur(5px);z-index:10;display:grid;place-items:center}.loading.hide{display:none}
 .loading-box{background:white;border-radius:16px;padding:18px 22px;display:flex;gap:12px;align-items:center;box-shadow:0 20px 50px rgba(0,0,0,.25);font-weight:700}
 .spinner{width:19px;height:19px;border:3px solid #dce5f2;border-top-color:#2463d4;border-radius:50%;animation:spin .7s linear infinite}
@@ -449,7 +450,7 @@ autocomplete="off" required>
 {conteudo}
 </div>
 </main>
-<footer>BBank 2026 · Dados sincronizados com Google Planilhas</footer>
+<footer>BBank 2026 · Dados sincronizados com Google Planilhas · <a href="/assets/politicas_privacidade.png" target="_blank" rel="noopener noreferrer">Políticas de Privacidade</a></footer>
 </div>
 
 <script>
@@ -614,6 +615,23 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-Type", "image/png")
                 self.send_header("Cache-Control", "public, max-age=3600")
+                self.send_header("Content-Length", str(len(dados)))
+                self.end_headers()
+                self.wfile.write(dados)
+                return
+
+            if caminho == "/assets/politicas_privacidade.png":
+                caminho_imagem = os.path.join(
+                    os.path.dirname(__file__), "politicas_privacidade.png"
+                )
+                try:
+                    with open(caminho_imagem, "rb") as arquivo:
+                        dados = arquivo.read()
+                except FileNotFoundError:
+                    self.send_error(404, "Imagem não encontrada")
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", "image/png")
                 self.send_header("Content-Length", str(len(dados)))
                 self.end_headers()
                 self.wfile.write(dados)
