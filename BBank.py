@@ -74,6 +74,7 @@ body:before{content:"";position:fixed;width:380px;height:380px;border-radius:50%
 .search{display:flex;gap:10px;margin-bottom:22px}
 .search input{flex:1;min-width:0;border:1px solid var(--line);border-radius:13px;padding:13px 15px;font-size:.98rem;outline:0;background:#fff}
 .search input:focus{border-color:#78a8ef;box-shadow:0 0 0 4px rgba(63,140,255,.1)}
+.search button{display:flex;align-items:center;justify-content:center;min-height:48px;min-width:104px;flex-shrink:0;touch-action:manipulation;position:relative;z-index:1}
 button{border:0;border-radius:12px;background:linear-gradient(135deg,var(--blue),#347ee8);color:white;font-weight:800;padding:0 20px;cursor:pointer;box-shadow:0 8px 20px rgba(36,99,212,.22);transition:.2s}
 button:hover{transform:translateY(-1px);filter:brightness(1.04)}
 .hero{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-bottom:20px}
@@ -102,11 +103,7 @@ button:hover{transform:translateY(-1px);filter:brightness(1.04)}
 .normas-atalho{margin-top:16px}.normas-button{display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;padding:13px 18px;border-radius:13px;background:linear-gradient(135deg,var(--blue),#347ee8);color:#fff;text-decoration:none;font-weight:800;box-shadow:0 8px 20px rgba(36,99,212,.22);transition:.2s}.normas-button:hover{transform:translateY(-1px);filter:brightness(1.04)}
 .back{display:inline-block;margin-top:18px;color:#3569b6;text-decoration:none;font-weight:800;font-size:.88rem}
 footer{text-align:center;color:#9eb0c7;font-size:.75rem;padding:16px}
-.loading{position:fixed;inset:0;background:rgba(5,15,30,.5);backdrop-filter:blur(5px);z-index:10;display:grid;place-items:center}.loading.hide{display:none}
-.loading-box{background:white;border-radius:16px;padding:18px 22px;display:flex;gap:12px;align-items:center;box-shadow:0 20px 50px rgba(0,0,0,.25);font-weight:700}
-.spinner{width:19px;height:19px;border:3px solid #dce5f2;border-top-color:#2463d4;border-radius:50%;animation:spin .7s linear infinite}
 @keyframes enter{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-@keyframes spin{to{transform:rotate(360deg)}}
 @media(max-width:850px){.grid{grid-template-columns:repeat(2,1fr)}.aquisicao-grid{grid-template-columns:1fr}}
 @media(max-width:560px){body{padding:0}.shell{border-radius:0;min-height:100vh}.header{padding:18px}.content{padding:18px}.hero{align-items:flex-start;flex-direction:column}.hero h2{font-size:1.45rem}.search{gap:7px}.search button{padding:0 14px}.grid{gap:9px}.stat{padding:14px;min-height:105px}.stat .value{font-size:1.25rem}.panel,.aquisicoes{padding:16px}}
 """
@@ -425,10 +422,6 @@ def pagina(conteudo="", valor_digitado="", titulo="BBank 2026"):
 <style>{CSS}</style>
 </head>
 <body>
-<div id="loading" class="loading hide" aria-hidden="true">
-<div class="loading-box"><span class="spinner"></span><span>Consultando dados...</span></div>
-</div>
-
 <div class="page">
 <main class="shell">
 <header class="header">
@@ -444,7 +437,7 @@ def pagina(conteudo="", valor_digitado="", titulo="BBank 2026"):
 <input name="matricula" inputmode="numeric" pattern="[0-9]*"
 placeholder="Digite sua matrícula" value="{esc(valor_digitado)}"
 autocomplete="off" required>
-<button type="submit">Consultar</button>
+<button type="submit" name="consultar" value="1">Consultar</button>
 </form>
 {conteudo}
 </div>
@@ -452,15 +445,7 @@ autocomplete="off" required>
 <footer>BBank 2026 · Dados sincronizados com Google Planilhas</footer>
 </div>
 
-<script>
-(() => {{
-    const loading = document.getElementById("loading");
-    document.querySelectorAll("form.search").forEach(form => {{
-        form.addEventListener("submit", () => loading.classList.remove("hide"));
-    }});
-    window.addEventListener("pageshow", () => loading.classList.add("hide"));
-}})();
-</script>
+
 </body>
 </html>""".encode("utf-8")
 
